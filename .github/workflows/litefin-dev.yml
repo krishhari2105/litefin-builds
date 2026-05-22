@@ -71,25 +71,10 @@ jobs:
           echo "$AUTHOR_B64" | base64 -d > ${GITHUB_WORKSPACE}/author.p12
           echo "$DIST_B64"   | base64 -d > ${GITHUB_WORKSPACE}/distributor.p12
 
-      # Step 7: Generate profiles.xml pointing to the correct workspace paths
-      - name: Configure Certificate Profile
-        env:
-          AUTHOR_PWD: "Krish2105" # You can switch this back to secrets later
-          DIST_PWD: "Krish2105"
+      - name: Copy Certificate Profile
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
-          
-          # Dynamically write profiles.xml using GITHUB_WORKSPACE paths
-          cat <<EOF > ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
-          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-          <profiles active="sam" version="3.1">
-            <profile name="sam">
-              <profileitem ca="" distributor="0" key="${GITHUB_WORKSPACE}/author.p12" password="${AUTHOR_PWD}" rootca=""/>
-              <profileitem ca="" distributor="1" key="${GITHUB_WORKSPACE}/distributor.p12" password="${DIST_PWD}" rootca=""/>
-              <profileitem ca="" distributor="2" key="" password="" rootca=""/>
-            </profile>
-          </profiles>
-          EOF
+          cp ${GITHUB_WORKSPACE}/profiles.xml ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
       # Step 8: Package and Sign (Using exact Tizen binary path and -s flag)
       - name: Compile and Repackage WGT
