@@ -27,12 +27,13 @@ jobs:
       - name: 'Checkout'
         uses: actions/checkout@v6
 
-      # Step 2: Check out the external Litefin repository
+      # Step 2: Check out the external Litefin repository into a separate path
       - name: Checkout Litefin repository
         uses: actions/checkout@v4
         with:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
+          path: 'litefin-src'  # <--- Keeps profiles.xml safe in the workspace root
 
 
       # Step 3: Set up Node.js
@@ -42,8 +43,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # Step 4: Install dependencies and build
+      # Step 4: Install dependencies and build inside the separate path
       - name: Install and Build Project
+        working-directory: ./litefin-src
         run: |
           npm install
           npm run build
@@ -100,5 +102,5 @@ jobs:
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`. The Tizen .wgt package has been verified and signed with your personal television certificate profile."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
-            *.wgt
-            *.ipk
+            litefin-src/*.wgt
+            litefin-src/*.ipk
