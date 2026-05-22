@@ -75,8 +75,9 @@ jobs:
           mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
           cp ${GITHUB_WORKSPACE}/profiles.xml ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
-      # Step 8: Package and Sign (Using exact Tizen binary path and -s flag)
+      # Step 8: Package and Sign inside the separate path
       - name: Compile and Repackage WGT
+        working-directory: ./litefin-src
         run: |
           echo "=== 1. Generating default packages via npm ==="
           npm run package
@@ -84,8 +85,6 @@ jobs:
           echo "=== 2. Re-signing each WGT with Samsung TV certificate ==="
           for wgt_file in *.wgt; do
             echo "Re-signing: $wgt_file"
-            
-            # Using the exact command style from the Jellyfin workflow
             ${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen package -t wgt -s "sam" -- "$wgt_file"
           done
           
