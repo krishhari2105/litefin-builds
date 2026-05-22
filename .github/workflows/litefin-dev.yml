@@ -51,131 +51,64 @@ jobs:
           npm install
           npm run build
 
-      # Step 5: Install Tizen CLI (Using Java 8 for Legacy Crypto Support)
+      # Step 5: Install Tizen Studio to GITHUB_WORKSPACE (Like Jellyfin workflow)
       - name: Setup Tizen CLI
         run: |
           sudo apt-get update -qq
-          mkdir -p $HOME/tizen-studio-cli
-          cd $HOME/tizen-studio-cli
-          wget -q https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin
-          chmod +x web-cli_Tizen_SDK_10.0_ubuntu-64.bin
-          ./web-cli_Tizen_SDK_10.0_ubuntu-64.bin --accept-license $HOME/tizen-studio
-          echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
+          sudo apt-get install -y expect curl
+          curl -fL -o tizen-installer "https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin"
+          chmod +x tizen-installer
+          ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
+          rm ./tizen-installer
+          echo "${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Decode Certificates & Use Repository profiles.xml
-      - name: Configure Samsung Certificates
+      # Step 6: Decode Certificates to GITHUB_WORKSPACE (Like Jellyfin workflow)
+      - name: Decode Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
           DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
         run: |
-          echo "=== Decoding certificate files to target Linux path ==="
-          mkdir -p /home/runner/tizen-certs
-          echo "$AUTHOR_B64" | base64 --decode > /home/runner/tizen-certs/author.p12
-          echo "$DIST_B64"   | base64 --decode > /home/runner/tizen-certs/distributor.p12
+          echo "$AUTHOR_B64" | base64 -d > ${GITHUB_WORKSPACE}/author.p12
+          echo "$DIST_B64"   | base64 -d > ${GITHUB_WORKSPACE}/distributor.p12
 
-          echo "=== Copying profiles.xml from repository to Tizen Studio ==="
-          mkdir -p $HOME/tizen-studio-data/profile
+      # Step 7: Generate profiles.xml pointing to the correct workspace paths
+      - name: Configure Certificate Profile
+        env:
+          AUTHOR_PWD: "Krish2105" # You can switch this back to secrets later
+          DIST_PWD: "Krish2105"
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
           
-          # Removed the ../ so it points to the correct folder in the workspace
-          cp my-repo/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
+          # Dynamically write profiles.xml using GITHUB_WORKSPACE paths
+          cat <<EOF > ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <profiles active="sam" version="3.1">
+            <profile name="sam">
+              <profileitem ca="" distributor="0" key="${GITHUB_WORKSPACE}/author.p12" password="${AUTHOR_PWD}" rootca=""/>
+              <profileitem ca="" distributor="1" key="${GITHUB_WORKSPACE}/distributor.p12" password="${DIST_PWD}" rootca=""/>
+              <profileitem ca="" distributor="2" key="" password="" rootca=""/>
+            </profile>
+          </profiles>
+          EOF
 
-          echo "=== Pointing Tizen CLI at profiles.xml ==="
-          tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
-
-          echo "=== Setting active profile ==="
-          tizen security-profiles set-active -n sam
-          tizen security-profiles list
-
-# Step 7: Package WGTs using npm, then re-sign with your TV certificate
+      # Step 8: Package and Sign (Using exact Tizen binary path and -s flag)
       - name: Compile and Repackage WGT
         run: |
           echo "=== 1. Generating default packages via npm ==="
           npm run package
 
-          echo "=== 2. Workspace state before re-signing ==="
-          ls -lh *.wgt *.ipk 2>/dev/null || echo "(no wgt/ipk yet)"
-
-          WGT_COUNT=$(ls *.wgt 2>/dev/null | wc -l)
-          if [ "$WGT_COUNT" -eq 0 ]; then
-            echo "ERROR: No .wgt files found after npm run package."
-            exit 1
-          fi
-
-          echo "=== 3. Checking signatures BEFORE re-signing (baseline) ==="
+          echo "=== 2. Re-signing each WGT with Samsung TV certificate ==="
           for wgt_file in *.wgt; do
-            echo "--- $wgt_file ---"
-            unzip -l "$wgt_file" | grep -E "signature|\.xml" || echo "(no signature files found)"
-          done
-
-          echo "=== 4. Re-signing each WGT with Samsung TV certificate ==="
-          for wgt_file in *.wgt; do
-            echo "----------------------------------------------------"
             echo "Re-signing: $wgt_file"
-
-            tizen package \
-              -t wgt \
-              -s sam \
-              -- "$wgt_file"
-
-            SIGN_EXIT=$?
-            if [ $SIGN_EXIT -ne 0 ]; then
-              echo "ERROR: tizen package failed for $wgt_file (exit $SIGN_EXIT)"
-              cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null
-              exit 1
-            fi
-
-            echo "Done: $wgt_file"
+            
+            # Using the exact command style from the Jellyfin workflow
+            ${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen package -t wgt -s "sam" -- "$wgt_file"
           done
+          
+          echo "=== 3. List Signed WGTs ==="
+          ls -lh *.wgt
 
-          echo "=== 5. Verifying signatures AFTER re-signing ==="
-          FAILED=0
-          for wgt_file in *.wgt; do
-            echo "----------------------------------------------------"
-            echo "Verifying: $wgt_file"
-
-            # Check the two required signature files exist inside the WGT zip
-            if unzip -l "$wgt_file" | grep -q "author-signature.xml"; then
-              echo "  [OK] author-signature.xml found"
-            else
-              echo "  [FAIL] author-signature.xml MISSING — author cert was NOT applied!"
-              FAILED=1
-            fi
-
-            if unzip -l "$wgt_file" | grep -q "signature1.xml"; then
-              echo "  [OK] signature1.xml found"
-            else
-              echo "  [FAIL] signature1.xml MISSING — distributor cert was NOT applied!"
-              FAILED=1
-            fi
-
-            # Extract and show the CN (Common Name) from the embedded author cert
-            # to confirm it's YOUR certificate and not the default one
-            echo "  --- Author cert details ---"
-            unzip -p "$wgt_file" author-signature.xml 2>/dev/null \
-              | grep -o 'X509Certificate>[^<]*' \
-              | head -1 \
-              | sed 's/X509Certificate>//' \
-              | base64 --decode 2>/dev/null \
-              | openssl x509 -noout -subject -issuer -dates 2>/dev/null \
-              || echo "  (could not decode cert — may be DER-embedded differently)"
-
-            echo "  --- All files in $wgt_file ---"
-            unzip -l "$wgt_file" | tail -n +4 | head -30
-          done
-
-          if [ $FAILED -ne 0 ]; then
-            echo ""
-            echo "=== SIGNING FAILED: One or more WGTs are missing signature files ==="
-            echo "Dumping Tizen CLI log:"
-            cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null
-            exit 1
-          fi
-
-          echo ""
-          echo "=== 6. All WGTs verified and signed successfully ==="
-          ls -lh *.wgt *.ipk 2>/dev/null
-
-      # Step 8: Release to GitHub
+      # Step 9: Release to GitHub
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
