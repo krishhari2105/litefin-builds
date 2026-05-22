@@ -42,6 +42,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: './litefin-src/package-lock.json'
 
       # Step 4: Install dependencies and build inside the separate path
       - name: Install and Build Project
