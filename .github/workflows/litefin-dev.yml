@@ -24,6 +24,9 @@ jobs:
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
           echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
 
+      - name: 'Checkout'
+        uses: actions/checkout@v6
+
       # Step 2: Check out the external Litefin repository
       - name: Checkout Litefin repository
         uses: actions/checkout@v4
@@ -31,12 +34,6 @@ jobs:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
 
-      # NEW Step 2.5: Check out YOUR repository to get profiles.xml
-      - name: Checkout My Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}
-          path: 'my-repo'
 
       # Step 3: Set up Node.js
       - name: Set up Node.js
