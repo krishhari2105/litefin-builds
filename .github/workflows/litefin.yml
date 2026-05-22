@@ -1,0 +1,49 @@
+name: Manual Litefin Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'main'
+
+jobs:
+  build-and-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repo using the branch selected in the manual trigger UI
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      # Step 2: Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 4: Run the build command
+      - name: Run webpack build
+        run: npm run build
+
+      # Step 5: Run the package command
+      - name: Run package script
+        run: npm run package
+
+      # Step 6: Upload the resulting packages directly from the repo root folder
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: litefin-packages
+          path: |
+            *.wgt
+            *.ipk
+          if-no-files-found: error
