@@ -74,7 +74,7 @@ jobs:
           # Register security profile via Tizen CLI and make it active immediately (-A)
           tizen security-profiles add \
             -A \
-            -n LitefinProfile \
+            -n sam \
             -a $HOME/tizen-certs/author.p12 \
             -p "$AUTHOR_PWD" \
             -d $HOME/tizen-certs/distributor.p12 \
@@ -82,18 +82,30 @@ jobs:
 
           tizen security-profiles list  
 
-      # Step 7: Run the package command
-      - name: Run package script
-        run: npm run package
+      # Step 7: Run default scripts first, then repackage using the generic .wgt as input
+      - name: Compile and Repackage WGT
+        run: |
+          echo "=== Generating all default repository packages ==="
+          # This compiles webOS .ipk bundles and the generic .wgt packages
+          npm run package
+          
+          echo "=== Locating the generic .wgt file and signing it ==="
+          # Finds the generic file dynamically (e.g. litefin-tizen-0.46.0.wgt)
+          GENERIC_WGT=$(ls *.wgt | head -n 1)
+          
+          # Runs your exact command structure using the active profile 'sam'
+          # This will output a signed file named like 'litefin-tizen-0.46.0-signed.wgt' 
+          # or overwrite it cleanly based on CLI behavior
+          tizen package -t wgt -s sam -- "$GENERIC_WGT"
 
-      # Step 8: Create or update a unique GitHub Release based on branch + date
+      # Step 8: Create or update a unique GitHub Release
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
           tag: "build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
           name: "Litefin Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
-          body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`. Packages include original webOS installations and repackaged Tizen widgets."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
             *.wgt
