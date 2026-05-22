@@ -81,8 +81,7 @@ jobs:
             -dp "$DIST_PWD"
 
           tizen security-profiles list  
-
-# Step 7: Run default scripts first, then repackage ALL generated WGTs properly
+      # Step 7: Run default scripts first, then repackage ALL generated WGTs properly
       - name: Compile and Repackage WGT
         run: |
           echo "=== 1. Generating all default repository packages ==="
@@ -100,8 +99,9 @@ jobs:
               echo "----------------------------------------------------"
               echo "Processing signature for: $wgt_file"
               
-              # Linux Tizen CLI requires '-w' to specify the input widget file for repackaging
-              tizen package -t wgt -s sam -w "$wgt_file" -o signed_wgts
+              # Correct Linux Syntax:
+              # Pass the exact destination filename to -o, and the input file at the very end
+              tizen package -t wgt -s sam -o "signed_wgts/$wgt_file" -- "$wgt_file"
               
             fi
           done
@@ -113,12 +113,14 @@ jobs:
             cp -f signed_wgts/*.wgt ./
             echo "Successfully replaced original packages with signed variants."
           else
-            echo "ERROR: No signed packages found in signed_wgts/! Check Tizen CLI execution above."
+            echo "ERROR: No signed packages found in signed_wgts/! Check Tizen CLI execution logs above."
             exit 1
           fi
           
           echo "=== 5. Final workspace confirmation after signing ==="
           ls -lh *.wgt *.ipk
+
+
       # Step 8: Create or update a unique GitHub Release
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
