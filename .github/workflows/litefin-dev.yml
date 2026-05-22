@@ -15,13 +15,17 @@ jobs:
       contents: write # Required permission to create tags and releases
 
     steps:
-      # Step 1: Generate the dynamic Build Date Tag (Format: YYYY.MM.DD)
-      - name: Generate Dynamic Date Tag
+      # Step 1: Generate dynamic Date and sanitized Branch Tag strings
+      # Example: 'main' on 2026.05.22 becomes 'main-2026.05.22'
+      - name: Generate Dynamic Metadata Tags
         id: prep
         run: |
+          RAW_BRANCH="${{ github.event.inputs.branch }}"
+          SANITIZED_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
 
-      # Step 2: Check out the external Litefin repository using the manual branch input
+      # Step 2: Check out the external Litefin repository using the input branch
       - name: Checkout Litefin repository
         uses: actions/checkout@v4
         with:
@@ -47,13 +51,13 @@ jobs:
       - name: Run package script
         run: npm run package
 
-      # Step 7: Create or update the GitHub Release with built files attached
+      # Step 7: Create or update a unique GitHub Release based on branch + date
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          tag: "build-${{ steps.prep.outputs.date_tag }}"
-          name: "Litefin Builds - ${{ steps.prep.outputs.date_tag }}"
+          tag: "build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
+          name: "Litefin Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
