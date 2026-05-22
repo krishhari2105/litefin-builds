@@ -1,0 +1,61 @@
+name: Manual Litefin Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from Litefin repository'
+        required: true
+        default: 'modern-layout'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required permission to create tags and releases
+
+    steps:
+      # Step 1: Generate the dynamic Build Date Tag (Format: YYYY.MM.DD)
+      - name: Generate Dynamic Date Tag
+        id: prep
+        run: |
+          echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      # Step 2: Check out the external Litefin repository using the manual branch input
+      - name: Checkout Litefin repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'moazsalem/litefin'
+          ref: ${{ github.event.inputs.branch }}
+
+      # Step 3: Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Step 4: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 5: Run the build command
+      - name: Run webpack build
+        run: npm run build
+
+      # Step 6: Run the package command
+      - name: Run package script
+        run: npm run package
+
+      # Step 7: Create or update the GitHub Release with built files attached
+      - name: Create or Update Litefin Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          tag: "build-${{ steps.prep.outputs.date_tag }}"
+          name: "Litefin Builds - ${{ steps.prep.outputs.date_tag }}"
+          body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: |
+            *.wgt
+            *.ipk
