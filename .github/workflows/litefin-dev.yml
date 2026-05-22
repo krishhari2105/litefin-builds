@@ -12,11 +12,10 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required permission to create tags and releases
+      contents: write
 
     steps:
       # Step 1: Generate dynamic Date and sanitized Branch Tag strings
-      # Example: 'main' on 2026.05.22 becomes 'main-2026.05.22'
       - name: Generate Dynamic Metadata Tags
         id: prep
         run: |
@@ -25,39 +24,41 @@ jobs:
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
           echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
 
-      # Step 2: Check out the external Litefin repository using the input branch
+      # Step 2: Check out the external Litefin repository
       - name: Checkout Litefin repository
         uses: actions/checkout@v4
         with:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
 
-      # Step 3: Set up Node.js environment
+      # Step 3: Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      # Step 4: Install Node dependencies and run Webpack build
+      # Step 4: Install dependencies and build
       - name: Install and Build Project
         run: |
           npm install
           npm run build
 
-      # Step 5: Install Tizen CLI CLI Tools
+      # Step 5: Install Tizen CLI
       - name: Setup Tizen CLI
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y openjdk-11-jre wget
           mkdir -p $HOME/tizen-studio-cli
           cd $HOME/tizen-studio-cli
-          wget https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin
+          wget -q https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin
           chmod +x web-cli_Tizen_SDK_10.0_ubuntu-64.bin
           ./web-cli_Tizen_SDK_10.0_ubuntu-64.bin --accept-license $HOME/tizen-studio
           echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Decode Certificates & Register Security Profile
+      # Step 6: Decode Certificates & Build profiles.xml MANUALLY
+      # This is the KEY fix - we bypass Gnome Keyring by writing plaintext
+      # passwords directly into profiles.xml, which Tizen CLI reads fine headlessly.
       - name: Configure Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
@@ -65,63 +66,108 @@ jobs:
           DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
           DIST_PWD: ${{ secrets.SAMSUNG_DISTRIBUTOR_PASSWORD }}
         run: |
+          echo "=== Decoding certificate files ==="
           mkdir -p $HOME/tizen-certs
-          
-          # Decode the p12 keys back to binary files safely
           echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
-          echo "$DIST_B64" | base64 --decode > $HOME/tizen-certs/distributor.p12
+          echo "$DIST_B64"   | base64 --decode > $HOME/tizen-certs/distributor.p12
           
-          # Register security profile via Tizen CLI and make it active immediately (-A)
-          tizen security-profiles add \
-            -A \
-            -n sam \
-            -a $HOME/tizen-certs/author.p12 \
-            -p "$AUTHOR_PWD" \
-            -d $HOME/tizen-certs/distributor.p12 \
-            -dp "$DIST_PWD"
+          echo "=== Verifying decoded cert files ==="
+          ls -lh $HOME/tizen-certs/
+          # Verify the p12 files are valid (non-zero size)
+          [ -s $HOME/tizen-certs/author.p12 ]      || { echo "ERROR: author.p12 is empty!"; exit 1; }
+          [ -s $HOME/tizen-certs/distributor.p12 ] || { echo "ERROR: distributor.p12 is empty!"; exit 1; }
 
-          tizen security-profiles list  
-      # Step 7: Run default scripts first, then repackage ALL generated WGTs properly
+          echo "=== Creating profiles directory ==="
+          mkdir -p $HOME/tizen-studio-data/profile
+
+          echo "=== Writing profiles.xml manually with plaintext passwords ==="
+          # CRITICAL: We write passwords in plaintext directly into profiles.xml.
+          # This bypasses the Gnome Keyring which does NOT exist in GitHub Actions.
+          cat > $HOME/tizen-studio-data/profile/profiles.xml << PROFILEEOF
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <profiles version="3.1">
+            <profile name="sam">
+              <profileitem ca="" distributor="0" key="$HOME/tizen-certs/author.p12" password="${AUTHOR_PWD}" rootca=""/>
+              <profileitem ca="" distributor="1" key="$HOME/tizen-certs/distributor.p12" password="${DIST_PWD}" rootca=""/>
+              <profileitem ca="" distributor="2" key="" password="" rootca=""/>
+            </profile>
+          </profiles>
+          PROFILEEOF
+
+          echo "=== Confirming profiles.xml written (passwords masked) ==="
+          cat $HOME/tizen-studio-data/profile/profiles.xml | sed 's/password="[^"]*"/password="****"/g'
+
+          echo "=== Pointing Tizen CLI to our profiles.xml ==="
+          tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
+          
+          echo "=== Verifying active profile ==="
+          tizen security-profiles set-active -n sam
+          tizen security-profiles list
+
+      # Step 7: Package WGTs using npm, then re-sign with your TV certificate
       - name: Compile and Repackage WGT
         run: |
-          echo "=== 1. Generating all default repository packages ==="
+          echo "=== 1. Generating default packages via npm ==="
           npm run package
-          
-          echo "=== 2. Listing workspace files before repackaging ==="
-          ls -lh *.wgt *.ipk || true
-          
-          # Create a separate folder to hold the freshly signed versions
-          mkdir -p signed_wgts
-          
-          echo "=== 3. Loop through and repackage every single WGT file ==="
-          for wgt_file in *.wgt; do
-            if [ -f "$wgt_file" ]; then
-              echo "----------------------------------------------------"
-              echo "Processing signature for: $wgt_file"
-              
-              # Correct Linux Syntax:
-              # Pass the exact destination filename to -o, and the input file at the very end
-              tizen package -t wgt -s sam -o "signed_wgts/$wgt_file" -- "$wgt_file"
-              
-            fi
-          done
-          
-          echo "----------------------------------------------------"
-          echo "=== 4. Overwriting original packages with freshly signed versions ==="
-          # Only attempt to copy if files were successfully created in the signed_wgts folder
-          if [ -n "$(ls signed_wgts/*.wgt 2>/dev/null)" ]; then
-            cp -f signed_wgts/*.wgt ./
-            echo "Successfully replaced original packages with signed variants."
-          else
-            echo "ERROR: No signed packages found in signed_wgts/! Check Tizen CLI execution logs above."
+
+          echo "=== 2. Workspace state before re-signing ==="
+          ls -lh *.wgt *.ipk 2>/dev/null || echo "(no wgt/ipk yet — check npm package script output above)"
+
+          # Abort early if nothing was generated
+          WGT_COUNT=$(ls *.wgt 2>/dev/null | wc -l)
+          if [ "$WGT_COUNT" -eq 0 ]; then
+            echo "ERROR: No .wgt files found after npm run package. Check your build output."
             exit 1
           fi
-          
-          echo "=== 5. Final workspace confirmation after signing ==="
-          ls -lh *.wgt *.ipk
 
+          echo "=== 3. Re-signing each WGT with Samsung TV certificate ==="
+          mkdir -p signed_wgts
 
-      # Step 8: Create or update a unique GitHub Release
+          for wgt_file in *.wgt; do
+            echo "----------------------------------------------------"
+            echo "Re-signing: $wgt_file"
+            
+            # tizen package re-signs an existing .wgt when you pass it directly.
+            # -t wgt  = widget type
+            # -s sam  = our profile name from profiles.xml
+            # -o <dir> = OUTPUT DIRECTORY (not a filename!)
+            # -- <file> = the input wgt to re-sign
+            tizen package \
+              -t wgt \
+              -s sam \
+              -o signed_wgts \
+              -- "$wgt_file"
+            
+            SIGN_EXIT=$?
+            if [ $SIGN_EXIT -ne 0 ]; then
+              echo "ERROR: tizen package failed for $wgt_file with exit code $SIGN_EXIT"
+              echo "=== Dumping Tizen CLI log for diagnosis ==="
+              cat $HOME/tizen-studio/tools/ide/cli.log 2>/dev/null || echo "(log not found)"
+              exit 1
+            fi
+            
+            echo "Successfully signed: $wgt_file"
+          done
+
+          echo "----------------------------------------------------"
+          echo "=== 4. Contents of signed_wgts/ ==="
+          ls -lh signed_wgts/ || echo "(signed_wgts is empty!)"
+
+          echo "=== 5. Replacing originals with signed versions ==="
+          if [ -n "$(ls signed_wgts/*.wgt 2>/dev/null)" ]; then
+            cp -f signed_wgts/*.wgt ./
+            echo "Replaced successfully."
+          else
+            echo "ERROR: No signed WGTs found. Dumping CLI log:"
+            cat $HOME/tizen-studio/tools/ide/cli.log 2>/dev/null || echo "(log not found at default path)"
+            find $HOME -name "cli.log" 2>/dev/null | head -5
+            exit 1
+          fi
+
+          echo "=== 6. Final artifact list ==="
+          ls -lh *.wgt *.ipk 2>/dev/null
+
+      # Step 8: Release to GitHub
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
