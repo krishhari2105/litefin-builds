@@ -100,21 +100,25 @@ jobs:
               echo "----------------------------------------------------"
               echo "Processing signature for: $wgt_file"
               
-              # Force Tizen CLI to put the signed output file into our 'signed_wgts' folder
-              # This will force the CLI to print the explicit Author/Distributor success logs you need!
-              tizen package -t wgt -s sam -o signed_wgts -- "$wgt_file"
+              # Linux Tizen CLI requires '-w' to specify the input widget file for repackaging
+              tizen package -t wgt -s sam -w "$wgt_file" -o signed_wgts
               
             fi
           done
           
           echo "----------------------------------------------------"
           echo "=== 4. Overwriting original packages with freshly signed versions ==="
-          # Copy the custom signed files over the generic ones in the root workspace
-          cp -f signed_wgts/*.wgt ./
+          # Only attempt to copy if files were successfully created in the signed_wgts folder
+          if [ -n "$(ls signed_wgts/*.wgt 2>/dev/null)" ]; then
+            cp -f signed_wgts/*.wgt ./
+            echo "Successfully replaced original packages with signed variants."
+          else
+            echo "ERROR: No signed packages found in signed_wgts/! Check Tizen CLI execution above."
+            exit 1
+          fi
           
           echo "=== 5. Final workspace confirmation after signing ==="
           ls -lh *.wgt *.ipk
-
       # Step 8: Create or update a unique GitHub Release
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
