@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
-          path: '../my-repo'
+          path: 'my-repo'
 
       # Step 3: Set up Node.js
       - name: Set up Node.js
@@ -76,8 +76,8 @@ jobs:
           echo "=== Copying profiles.xml from repository to Tizen Studio ==="
           mkdir -p $HOME/tizen-studio-data/profile
           
-          # Copy from the secondary checkout folder we defined in Step 2.5
-          cp ../my-repo/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
+          # Removed the ../ so it points to the correct folder in the workspace
+          cp my-repo/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
 
           echo "=== Pointing Tizen CLI at profiles.xml ==="
           tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
