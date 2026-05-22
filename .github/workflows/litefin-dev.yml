@@ -80,6 +80,8 @@ jobs:
             -d $HOME/tizen-certs/distributor.p12 \
             -dp "$DIST_PWD"
 
+          tizen security-profiles list  
+
       # Step 7: Run the package command
       - name: Run package script
         run: npm run package
