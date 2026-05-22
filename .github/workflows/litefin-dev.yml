@@ -39,19 +39,52 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # Step 4: Install dependencies
-      - name: Install dependencies
-        run: npm install
+      # Step 4: Install Node dependencies and run Webpack build
+      - name: Install and Build Project
+        run: |
+          npm install
+          npm run build
 
-      # Step 5: Run the build command
-      - name: Run webpack build
-        run: npm run build
+      # Step 5: Install Tizen CLI CLI Tools
+      - name: Setup Tizen CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jre wget
+          mkdir -p $HOME/tizen-studio-cli
+          cd $HOME/tizen-studio-cli
+          wget https://download.tizen.org/sdk/tizenstudio/official/binary/tizen-studio-cli_5.5_ubuntu-64.bin
+          chmod +x tizen-studio-cli_5.5_ubuntu-64.bin
+          ./tizen-studio-cli_5.5_ubuntu-64.bin --accept-license $HOME/tizen-studio
+          echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Run the package command
+      # Step 6: Decode Certificates & Register Security Profile
+      - name: Configure Samsung Certificates
+        env:
+          AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
+          AUTHOR_PWD: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
+          DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
+          DIST_PWD: ${{ secrets.SAMSUNG_DISTRIBUTOR_PASSWORD }}
+        run: |
+          mkdir -p $HOME/tizen-certs
+          
+          # Decode the p12 keys back to binary files safely
+          echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
+          echo "$DIST_B64" | base64 --decode > $HOME/tizen-certs/distributor.p12
+          
+          # Register security profile via Tizen CLI and make it active immediately (-A)
+          tizen security-profiles add \
+            -A \
+            -n LitefinProfile \
+            -a $HOME/tizen-certs/author.p12 \
+            -p "$AUTHOR_PWD" \
+            -d $HOME/tizen-certs/distributor.p12 \
+            -dp "$DIST_PWD"
+
+      # Step 7: Run the package command
       - name: Run package script
         run: npm run package
 
-      # Step 7: Create or update a unique GitHub Release based on branch + date
+      # Step 8: Create or update a unique GitHub Release based on branch + date
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
