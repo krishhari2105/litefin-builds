@@ -55,34 +55,22 @@ jobs:
           ./web-cli_Tizen_SDK_10.0_ubuntu-64.bin --accept-license $HOME/tizen-studio
           echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Decode Certificates & Build profiles.xml with Direct Password
+      # Step 6: Decode Certificates & Use Repository profiles.xml
       - name: Configure Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
           DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
         run: |
-          echo "=== Decoding certificate files ==="
-          mkdir -p $HOME/tizen-certs
-          echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
-          echo "$DIST_B64"   | base64 --decode > $HOME/tizen-certs/distributor.p12
+          echo "=== Decoding certificate files to target Linux path ==="
+          mkdir -p /home/runner/tizen-certs
+          echo "$AUTHOR_B64" | base64 --decode > /home/runner/tizen-certs/author.p12
+          echo "$DIST_B64"   | base64 --decode > /home/runner/tizen-certs/distributor.p12
 
-          echo "=== Writing profiles.xml ==="
+          echo "=== Copying profiles.xml from repository to Tizen Studio ==="
           mkdir -p $HOME/tizen-studio-data/profile
-
-          printf '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' > $HOME/tizen-studio-data/profile/profiles.xml
-          printf '<profiles active="sam" version="3.1">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
-          printf '  <profile name="sam">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           
-          # Writing "Krish2105" directly into the password attribute
-          printf '    <profileitem ca="" distributor="0" key="%s" password="Krish2105" rootca=""/>\n' \
-            "$HOME/tizen-certs/author.p12" >> $HOME/tizen-studio-data/profile/profiles.xml
-            
-          printf '    <profileitem ca="" distributor="1" key="%s" password="Krish2105" rootca=""/>\n' \
-            "$HOME/tizen-certs/distributor.p12" >> $HOME/tizen-studio-data/profile/profiles.xml
-            
-          printf '    <profileitem ca="" distributor="2" key="" password="" rootca=""/>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
-          printf '  </profile>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
-          printf '</profiles>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
+          # This copies the file you committed in Step 1
+          cp ${{ github.workspace }}/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
 
           echo "=== Pointing Tizen CLI at profiles.xml ==="
           tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
