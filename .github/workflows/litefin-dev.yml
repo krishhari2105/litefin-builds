@@ -55,37 +55,30 @@ jobs:
           ./web-cli_Tizen_SDK_10.0_ubuntu-64.bin --accept-license $HOME/tizen-studio
           echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Decode Certificates & Build profiles.xml with .pwd files
+      # Step 6: Decode Certificates & Build profiles.xml with Direct Password
       - name: Configure Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
-          AUTHOR_PWD: "Krish2105" # You can change this back to secrets later
           DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
-          DIST_PWD: "Krish2105"
         run: |
           echo "=== Decoding certificate files ==="
           mkdir -p $HOME/tizen-certs
           echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
           echo "$DIST_B64"   | base64 --decode > $HOME/tizen-certs/distributor.p12
 
-          echo "=== Creating .pwd files ==="
-          # Tizen CLI expects a file containing the password, not the string itself
-          echo -n "$AUTHOR_PWD" > $HOME/tizen-certs/author.pwd
-          echo -n "$DIST_PWD" > $HOME/tizen-certs/distributor.pwd
-
           echo "=== Writing profiles.xml ==="
           mkdir -p $HOME/tizen-studio-data/profile
 
-          # Matching your Windows XML exactly, including active="sam"
           printf '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' > $HOME/tizen-studio-data/profile/profiles.xml
           printf '<profiles active="sam" version="3.1">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           printf '  <profile name="sam">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           
-          # Pointing the password attribute to the .pwd FILE PATHS
-          printf '    <profileitem ca="" distributor="0" key="%s" password="%s" rootca=""/>\n' \
-            "$HOME/tizen-certs/author.p12" "$HOME/tizen-certs/author.pwd" >> $HOME/tizen-studio-data/profile/profiles.xml
-          printf '    <profileitem ca="" distributor="1" key="%s" password="%s" rootca=""/>\n' \
-            "$HOME/tizen-certs/distributor.p12" "$HOME/tizen-certs/distributor.pwd" >> $HOME/tizen-studio-data/profile/profiles.xml
+          # Writing "Krish2105" directly into the password attribute
+          printf '    <profileitem ca="" distributor="0" key="%s" password="Krish2105" rootca=""/>\n' \
+            "$HOME/tizen-certs/author.p12" >> $HOME/tizen-studio-data/profile/profiles.xml
+            
+          printf '    <profileitem ca="" distributor="1" key="%s" password="Krish2105" rootca=""/>\n' \
+            "$HOME/tizen-certs/distributor.p12" >> $HOME/tizen-studio-data/profile/profiles.xml
             
           printf '    <profileitem ca="" distributor="2" key="" password="" rootca=""/>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           printf '  </profile>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
