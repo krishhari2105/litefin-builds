@@ -82,7 +82,7 @@ jobs:
 
           tizen security-profiles list  
 
-# Step 7: Compile and explicitly move the verified signed WGT file
+# Step 7: Run default scripts first, then repackage ALL generated WGTs in place
       - name: Compile and Repackage WGT
         run: |
           echo "=== 1. Generating all default repository packages ==="
@@ -91,25 +91,21 @@ jobs:
           echo "=== 2. Listing workspace files before repackaging ==="
           ls -lh *.wgt *.ipk || true
           
-          # Isolate the original generic .wgt package
-          GENERIC_WGT=$(ls *.wgt | head -n 1)
-          echo "Target generic package file found: $GENERIC_WGT"
+          echo "=== 3. Loop through and repackage every single WGT file ==="
+          # Loop through all generated .wgt files in the root directory
+          for wgt_file in *.wgt; do
+            if [ -f "$wgt_file" ]; then
+              echo "----------------------------------------------------"
+              echo "Repackaging: $wgt_file"
+              
+              # Run your exact signature command on the file directly in the workspace root
+              tizen package -t wgt -s sam -- "$wgt_file"
+              
+            fi
+          done
           
-          # Create a secure temporary home for output processing
-          mkdir -p $GITHUB_WORKSPACE/signed-output
-          
-          echo "=== 3. Running explicit signature build execution ==="
-          # Packaging into our targeted output folder forces the Tizen CLI to save the newly generated signed file there
-          tizen package -t wgt -s sam -o "$GITHUB_WORKSPACE/signed-output" -- "$GENERIC_WGT"
-          
-          echo "=== 4. Checking the contents of the signed folder ==="
-          ls -lh "$GITHUB_WORKSPACE/signed-output"
-          
-          # Move your freshly signed package back to the root, explicitly over-writing the original un-signed package
-          SIGNED_WGT=$(ls $GITHUB_WORKSPACE/signed-output/*.wgt | head -n 1)
-          cp -f "$SIGNED_WGT" "$GITHUB_WORKSPACE/$GENERIC_WGT"
-          
-          echo "=== 5. Final workspace confirmation ==="
+          echo "----------------------------------------------------"
+          echo "=== 4. Final workspace confirmation after signing ==="
           ls -lh *.wgt *.ipk
 
       # Step 8: Create or update a unique GitHub Release
