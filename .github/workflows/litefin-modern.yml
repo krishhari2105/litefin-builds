@@ -1,4 +1,4 @@
-name: Manual Litefin Build & Release
+name: Litefin modern Build & Release
 
 on:
   workflow_dispatch:
