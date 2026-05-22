@@ -70,37 +70,48 @@ jobs:
           mkdir -p $HOME/tizen-certs
           echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
           echo "$DIST_B64"   | base64 --decode > $HOME/tizen-certs/distributor.p12
-          
+
           echo "=== Verifying decoded cert files ==="
           ls -lh $HOME/tizen-certs/
-          # Verify the p12 files are valid (non-zero size)
           [ -s $HOME/tizen-certs/author.p12 ]      || { echo "ERROR: author.p12 is empty!"; exit 1; }
           [ -s $HOME/tizen-certs/distributor.p12 ] || { echo "ERROR: distributor.p12 is empty!"; exit 1; }
 
-          echo "=== Creating profiles directory ==="
+          echo "=== Verifying p12 files are valid with correct passwords ==="
+          openssl pkcs12 -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
+            && echo "  [OK] author.p12 password is correct" \
+            || { echo "  [FAIL] author.p12 password is WRONG — check SAMSUNG_AUTHOR_PASSWORD secret!"; exit 1; }
+
+          openssl pkcs12 -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
+            && echo "  [OK] distributor.p12 password is correct" \
+            || { echo "  [FAIL] distributor.p12 password is WRONG — check SAMSUNG_DISTRIBUTOR_PASSWORD secret!"; exit 1; }
+
+          echo "=== Writing profiles.xml ==="
           mkdir -p $HOME/tizen-studio-data/profile
 
-          echo "=== Writing profiles.xml manually with plaintext passwords ==="
-          # CRITICAL: We write passwords in plaintext directly into profiles.xml.
-          # This bypasses the Gnome Keyring which does NOT exist in GitHub Actions.
-          cat > $HOME/tizen-studio-data/profile/profiles.xml << PROFILEEOF
-          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-          <profiles version="3.1">
-            <profile name="sam">
-              <profileitem ca="" distributor="0" key="$HOME/tizen-certs/author.p12" password="${AUTHOR_PWD}" rootca=""/>
-              <profileitem ca="" distributor="1" key="$HOME/tizen-certs/distributor.p12" password="${DIST_PWD}" rootca=""/>
-              <profileitem ca="" distributor="2" key="" password="" rootca=""/>
-            </profile>
-          </profiles>
-          PROFILEEOF
+          # Use printf to avoid ANY heredoc indentation issues.
+          # Variables are expanded by the shell before printf runs.
+          printf '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' > $HOME/tizen-studio-data/profile/profiles.xml
+          printf '<profiles version="3.1">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '  <profile name="sam">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '    <profileitem ca="" distributor="0" key="%s" password="%s" rootca=""/>\n' \
+            "$HOME/tizen-certs/author.p12" "$AUTHOR_PWD" >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '    <profileitem ca="" distributor="1" key="%s" password="%s" rootca=""/>\n' \
+            "$HOME/tizen-certs/distributor.p12" "$DIST_PWD" >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '    <profileitem ca="" distributor="2" key="" password="" rootca=""/>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '  </profile>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
+          printf '</profiles>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
 
-          echo "=== Confirming profiles.xml written (passwords masked) ==="
+          echo "=== Confirming profiles.xml content (passwords masked) ==="
           cat $HOME/tizen-studio-data/profile/profiles.xml | sed 's/password="[^"]*"/password="****"/g'
 
-          echo "=== Pointing Tizen CLI to our profiles.xml ==="
+          echo "=== Confirming NO leading whitespace in XML ==="
+          # The first character must be '<' — if it's a space, heredoc indentation got in
+          head -c1 $HOME/tizen-studio-data/profile/profiles.xml | xxd
+
+          echo "=== Pointing Tizen CLI at profiles.xml ==="
           tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
-          
-          echo "=== Verifying active profile ==="
+
+          echo "=== Setting active profile ==="
           tizen security-profiles set-active -n sam
           tizen security-profiles list
 
