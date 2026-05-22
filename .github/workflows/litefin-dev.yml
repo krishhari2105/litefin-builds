@@ -57,14 +57,12 @@ jobs:
           echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
       # Step 6: Decode Certificates & Build profiles.xml MANUALLY
-      # This is the KEY fix - we bypass Gnome Keyring by writing plaintext
-      # passwords directly into profiles.xml, which Tizen CLI reads fine headlessly.
       - name: Configure Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
-          AUTHOR_PWD: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
+          AUTHOR_PWD: "Krish2105"
           DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
-          DIST_PWD: ${{ secrets.SAMSUNG_DISTRIBUTOR_PASSWORD }}
+          DIST_PWD: "Krish2105"
         run: |
           echo "=== Decoding certificate files ==="
           mkdir -p $HOME/tizen-certs
@@ -77,21 +75,17 @@ jobs:
           [ -s $HOME/tizen-certs/distributor.p12 ] || { echo "ERROR: distributor.p12 is empty!"; exit 1; }
 
           echo "=== Verifying p12 files are valid with correct passwords ==="
-          
-          # Added the -legacy flag to support older Tizen/Samsung certificate encryption
-          openssl pkcs12 -legacy -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
+          openssl pkcs12 -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
             && echo "  [OK] author.p12 password is correct" \
-            || { echo "  [FAIL] author.p12 password is WRONG — check SAMSUNG_AUTHOR_PASSWORD secret!"; exit 1; }
+            || { echo "  [FAIL] author.p12 password is WRONG!"; exit 1; }
 
-          openssl pkcs12 -legacy -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
+          openssl pkcs12 -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
             && echo "  [OK] distributor.p12 password is correct" \
-            || { echo "  [FAIL] distributor.p12 password is WRONG — check SAMSUNG_DISTRIBUTOR_PASSWORD secret!"; exit 1; }
+            || { echo "  [FAIL] distributor.p12 password is WRONG!"; exit 1; }
 
           echo "=== Writing profiles.xml ==="
           mkdir -p $HOME/tizen-studio-data/profile
 
-          # Use printf to avoid ANY heredoc indentation issues.
-          # Variables are expanded by the shell before printf runs.
           printf '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' > $HOME/tizen-studio-data/profile/profiles.xml
           printf '<profiles version="3.1">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           printf '  <profile name="sam">\n' >> $HOME/tizen-studio-data/profile/profiles.xml
@@ -102,13 +96,6 @@ jobs:
           printf '    <profileitem ca="" distributor="2" key="" password="" rootca=""/>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           printf '  </profile>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
           printf '</profiles>\n' >> $HOME/tizen-studio-data/profile/profiles.xml
-
-          echo "=== Confirming profiles.xml content (passwords masked) ==="
-          cat $HOME/tizen-studio-data/profile/profiles.xml | sed 's/password="[^"]*"/password="****"/g'
-
-          echo "=== Confirming NO leading whitespace in XML ==="
-          # The first character must be '<' — if it's a space, heredoc indentation got in
-          head -c1 $HOME/tizen-studio-data/profile/profiles.xml | xxd
 
           echo "=== Pointing Tizen CLI at profiles.xml ==="
           tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
