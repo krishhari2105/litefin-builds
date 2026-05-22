@@ -104,67 +104,47 @@ jobs:
           tizen security-profiles set-active -n sam
           tizen security-profiles list
 
-      # Step 7: Package WGTs using npm, then re-sign with your TV certificate
+# Step 7: Package WGTs using npm, then re-sign with your TV certificate
       - name: Compile and Repackage WGT
         run: |
           echo "=== 1. Generating default packages via npm ==="
           npm run package
 
           echo "=== 2. Workspace state before re-signing ==="
-          ls -lh *.wgt *.ipk 2>/dev/null || echo "(no wgt/ipk yet — check npm package script output above)"
+          ls -lh *.wgt *.ipk 2>/dev/null || echo "(no wgt/ipk yet)"
 
-          # Abort early if nothing was generated
           WGT_COUNT=$(ls *.wgt 2>/dev/null | wc -l)
           if [ "$WGT_COUNT" -eq 0 ]; then
-            echo "ERROR: No .wgt files found after npm run package. Check your build output."
+            echo "ERROR: No .wgt files found after npm run package."
             exit 1
           fi
 
           echo "=== 3. Re-signing each WGT with Samsung TV certificate ==="
-          mkdir -p signed_wgts
-
           for wgt_file in *.wgt; do
             echo "----------------------------------------------------"
             echo "Re-signing: $wgt_file"
-            
-            # tizen package re-signs an existing .wgt when you pass it directly.
-            # -t wgt  = widget type
-            # -s sam  = our profile name from profiles.xml
-            # -o <dir> = OUTPUT DIRECTORY (not a filename!)
-            # -- <file> = the input wgt to re-sign
+
+            # When input is an existing .wgt, Tizen re-signs it IN PLACE.
+            # The -o flag is silently ignored in this mode — output goes back
+            # to the same file. So no signed_wgts/ folder needed at all.
             tizen package \
               -t wgt \
               -s sam \
-              -o signed_wgts \
               -- "$wgt_file"
-            
+
             SIGN_EXIT=$?
             if [ $SIGN_EXIT -ne 0 ]; then
-              echo "ERROR: tizen package failed for $wgt_file with exit code $SIGN_EXIT"
-              echo "=== Dumping Tizen CLI log for diagnosis ==="
-              cat $HOME/tizen-studio/tools/ide/cli.log 2>/dev/null || echo "(log not found)"
+              echo "ERROR: tizen package failed for $wgt_file (exit $SIGN_EXIT)"
+              echo "=== Tizen CLI log ==="
+              cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null || echo "(log not found)"
               exit 1
             fi
-            
-            echo "Successfully signed: $wgt_file"
+
+            echo "Done: $wgt_file"
           done
 
           echo "----------------------------------------------------"
-          echo "=== 4. Contents of signed_wgts/ ==="
-          ls -lh signed_wgts/ || echo "(signed_wgts is empty!)"
-
-          echo "=== 5. Replacing originals with signed versions ==="
-          if [ -n "$(ls signed_wgts/*.wgt 2>/dev/null)" ]; then
-            cp -f signed_wgts/*.wgt ./
-            echo "Replaced successfully."
-          else
-            echo "ERROR: No signed WGTs found. Dumping CLI log:"
-            cat $HOME/tizen-studio/tools/ide/cli.log 2>/dev/null || echo "(log not found at default path)"
-            find $HOME -name "cli.log" 2>/dev/null | head -5
-            exit 1
-          fi
-
-          echo "=== 6. Final artifact list ==="
+          echo "=== 4. Final signed artifacts ==="
           ls -lh *.wgt *.ipk 2>/dev/null
 
       # Step 8: Release to GitHub
