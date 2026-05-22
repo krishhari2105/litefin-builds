@@ -77,11 +77,13 @@ jobs:
           [ -s $HOME/tizen-certs/distributor.p12 ] || { echo "ERROR: distributor.p12 is empty!"; exit 1; }
 
           echo "=== Verifying p12 files are valid with correct passwords ==="
-          openssl pkcs12 -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
+          
+          # Added the -legacy flag to support older Tizen/Samsung certificate encryption
+          openssl pkcs12 -legacy -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
             && echo "  [OK] author.p12 password is correct" \
             || { echo "  [FAIL] author.p12 password is WRONG — check SAMSUNG_AUTHOR_PASSWORD secret!"; exit 1; }
 
-          openssl pkcs12 -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
+          openssl pkcs12 -legacy -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
             && echo "  [OK] distributor.p12 password is correct" \
             || { echo "  [FAIL] distributor.p12 password is WRONG — check SAMSUNG_DISTRIBUTOR_PASSWORD secret!"; exit 1; }
 
