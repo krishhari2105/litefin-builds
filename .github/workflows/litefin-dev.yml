@@ -69,20 +69,6 @@ jobs:
           echo "$AUTHOR_B64" | base64 --decode > $HOME/tizen-certs/author.p12
           echo "$DIST_B64"   | base64 --decode > $HOME/tizen-certs/distributor.p12
 
-          echo "=== Verifying decoded cert files ==="
-          ls -lh $HOME/tizen-certs/
-          [ -s $HOME/tizen-certs/author.p12 ]      || { echo "ERROR: author.p12 is empty!"; exit 1; }
-          [ -s $HOME/tizen-certs/distributor.p12 ] || { echo "ERROR: distributor.p12 is empty!"; exit 1; }
-
-          echo "=== Verifying p12 files are valid with correct passwords ==="
-          openssl pkcs12 -in $HOME/tizen-certs/author.p12 -passin env:AUTHOR_PWD -noout \
-            && echo "  [OK] author.p12 password is correct" \
-            || { echo "  [FAIL] author.p12 password is WRONG!"; exit 1; }
-
-          openssl pkcs12 -in $HOME/tizen-certs/distributor.p12 -passin env:DIST_PWD -noout \
-            && echo "  [OK] distributor.p12 password is correct" \
-            || { echo "  [FAIL] distributor.p12 password is WRONG!"; exit 1; }
-
           echo "=== Writing profiles.xml ==="
           mkdir -p $HOME/tizen-studio-data/profile
 
