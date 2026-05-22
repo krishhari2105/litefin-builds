@@ -113,7 +113,7 @@ jobs:
           tag: "build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
           name: "Litefin Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
-          token: ${{ secrets.GITHU
+          token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
             litefin-src/*.wgt
             litefin-src/*.ipk
