@@ -31,6 +31,13 @@ jobs:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
 
+      # NEW Step 2.5: Check out YOUR repository to get profiles.xml
+      - name: Checkout My Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: '../my-repo'
+
       # Step 3: Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -69,8 +76,8 @@ jobs:
           echo "=== Copying profiles.xml from repository to Tizen Studio ==="
           mkdir -p $HOME/tizen-studio-data/profile
           
-          # This copies the file you committed in Step 1
-          cp ${{ github.workspace }}/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
+          # Copy from the secondary checkout folder we defined in Step 2.5
+          cp ../my-repo/profiles.xml $HOME/tizen-studio-data/profile/profiles.xml
 
           echo "=== Pointing Tizen CLI at profiles.xml ==="
           tizen cli-config "default.profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
