@@ -6,7 +6,7 @@ on:
       branch:
         description: 'Branch to build from Litefin repository'
         required: true
-        default: 'main'
+        default: 'development'
 
 jobs:
   build-and-release:
