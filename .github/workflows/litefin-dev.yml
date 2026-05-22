@@ -119,14 +119,17 @@ jobs:
             exit 1
           fi
 
-          echo "=== 3. Re-signing each WGT with Samsung TV certificate ==="
+          echo "=== 3. Checking signatures BEFORE re-signing (baseline) ==="
+          for wgt_file in *.wgt; do
+            echo "--- $wgt_file ---"
+            unzip -l "$wgt_file" | grep -E "signature|\.xml" || echo "(no signature files found)"
+          done
+
+          echo "=== 4. Re-signing each WGT with Samsung TV certificate ==="
           for wgt_file in *.wgt; do
             echo "----------------------------------------------------"
             echo "Re-signing: $wgt_file"
 
-            # When input is an existing .wgt, Tizen re-signs it IN PLACE.
-            # The -o flag is silently ignored in this mode — output goes back
-            # to the same file. So no signed_wgts/ folder needed at all.
             tizen package \
               -t wgt \
               -s sam \
@@ -135,16 +138,59 @@ jobs:
             SIGN_EXIT=$?
             if [ $SIGN_EXIT -ne 0 ]; then
               echo "ERROR: tizen package failed for $wgt_file (exit $SIGN_EXIT)"
-              echo "=== Tizen CLI log ==="
-              cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null || echo "(log not found)"
+              cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null
               exit 1
             fi
 
             echo "Done: $wgt_file"
           done
 
-          echo "----------------------------------------------------"
-          echo "=== 4. Final signed artifacts ==="
+          echo "=== 5. Verifying signatures AFTER re-signing ==="
+          FAILED=0
+          for wgt_file in *.wgt; do
+            echo "----------------------------------------------------"
+            echo "Verifying: $wgt_file"
+
+            # Check the two required signature files exist inside the WGT zip
+            if unzip -l "$wgt_file" | grep -q "author-signature.xml"; then
+              echo "  [OK] author-signature.xml found"
+            else
+              echo "  [FAIL] author-signature.xml MISSING — author cert was NOT applied!"
+              FAILED=1
+            fi
+
+            if unzip -l "$wgt_file" | grep -q "signature1.xml"; then
+              echo "  [OK] signature1.xml found"
+            else
+              echo "  [FAIL] signature1.xml MISSING — distributor cert was NOT applied!"
+              FAILED=1
+            fi
+
+            # Extract and show the CN (Common Name) from the embedded author cert
+            # to confirm it's YOUR certificate and not the default one
+            echo "  --- Author cert details ---"
+            unzip -p "$wgt_file" author-signature.xml 2>/dev/null \
+              | grep -o 'X509Certificate>[^<]*' \
+              | head -1 \
+              | sed 's/X509Certificate>//' \
+              | base64 --decode 2>/dev/null \
+              | openssl x509 -noout -subject -issuer -dates 2>/dev/null \
+              || echo "  (could not decode cert — may be DER-embedded differently)"
+
+            echo "  --- All files in $wgt_file ---"
+            unzip -l "$wgt_file" | tail -n +4 | head -30
+          done
+
+          if [ $FAILED -ne 0 ]; then
+            echo ""
+            echo "=== SIGNING FAILED: One or more WGTs are missing signature files ==="
+            echo "Dumping Tizen CLI log:"
+            cat $HOME/tizen-studio-data/cli/logs/cli.log 2>/dev/null
+            exit 1
+          fi
+
+          echo ""
+          echo "=== 6. All WGTs verified and signed successfully ==="
           ls -lh *.wgt *.ipk 2>/dev/null
 
       # Step 8: Release to GitHub
