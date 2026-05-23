@@ -79,6 +79,13 @@ jobs:
           mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
           cp ${GITHUB_WORKSPACE}/profiles.xml ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
+      # NEW: Dynamically inject the secret password into the runner's profile copy
+      - name: Inject Certificate Password
+        env:
+          CERT_PASSWORD: ${{ secrets.SAMSUNG_CERT_PASSWORD }}
+        run: |
+          sed -i "s/SAMSUNG_PWD_PLACEHOLDER/${CERT_PASSWORD}/g" ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
+
       - name: Compile and Repackage WGT
         working-directory: ./litefin-src
         run: |
