@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <profiles active="sam" version="3.1">
   <profile name="sam">
-    <profileitem ca="" distributor="0" key="/home/runner/work/litefin-builds/litefin-builds/author.p12" password="Krish2105" rootca=""/>
-    <profileitem ca="" distributor="1" key="/home/runner/work/litefin-builds/litefin-builds/distributor.p12" password="Krish2105" rootca=""/>
+    <profileitem ca="" distributor="0" key="/home/runner/work/litefin-builds/litefin-builds/author.p12" password="SAMSUNG_PWD_PLACEHOLDER" rootca=""/>
+    <profileitem ca="" distributor="1" key="/home/runner/work/litefin-builds/litefin-builds/distributor.p12" password="SAMSUNG_PWD_PLACEHOLDER" rootca=""/>
     <profileitem ca="" distributor="2" key="" password="" rootca=""/>
   </profile>
 </profiles>
