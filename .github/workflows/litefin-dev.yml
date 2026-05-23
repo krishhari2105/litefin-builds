@@ -15,7 +15,6 @@ jobs:
       contents: write
 
     steps:
-      # Step 1: Generate dynamic Date and sanitized Branch Tag strings
       - name: Generate Dynamic Metadata Tags
         id: prep
         run: |
@@ -24,19 +23,16 @@ jobs:
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
           echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
 
-      - name: 'Checkout'
+      - name: Checkout
         uses: actions/checkout@v6
 
-      # Step 2: Check out the external Litefin repository into a separate path
       - name: Checkout Litefin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
-          path: 'litefin-src'  # <--- Keeps profiles.xml safe in the workspace root
+          path: 'litefin-src'
 
-
-      # Step 3: Set up Node.js with caching explicitly configured
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -44,14 +40,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'litefin-src/package-lock.json'
 
-      # Step 4: Install dependencies and build inside the separate path
       - name: Install and Build Project
         working-directory: ./litefin-src
         run: |
           npm install
           npm run build
 
-      # Step 5a: Cache Tizen Studio (Matches Jellyfin workflow pattern)
       - name: Cache Tizen Studio
         id: cache-tizen
         uses: actions/cache@v5
@@ -59,7 +53,6 @@ jobs:
           path: ${{ github.workspace }}/tizen-studio
           key: tizen-studio-10.0
 
-      # Step 5b: Install Tizen CLI ONLY on a cache miss
       - name: Setup Tizen CLI
         if: steps.cache-tizen.outputs.cache-hit != 'true'
         run: |
@@ -70,12 +63,9 @@ jobs:
           ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
           rm ./tizen-installer
 
-      # Step 5c: Always expose the Tizen Studio binary folder to PATH
       - name: Add Tizen Studio to PATH
-        run: |
-          echo "${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
+        run: echo "${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
 
-      # Step 6: Decode Certificates to GITHUB_WORKSPACE (Like Jellyfin workflow)
       - name: Decode Samsung Certificates
         env:
           AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
@@ -89,23 +79,14 @@ jobs:
           mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
           cp ${GITHUB_WORKSPACE}/profiles.xml ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
-      # Step 8: Package and Sign inside the separate path
       - name: Compile and Repackage WGT
         working-directory: ./litefin-src
         run: |
-          echo "=== 1. Generating default packages via npm ==="
           npm run package
-
-          echo "=== 2. Re-signing each WGT with Samsung TV certificate ==="
           for wgt_file in *.wgt; do
-            echo "Re-signing: $wgt_file"
-            ${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen package -t wgt -s "sam" -- "$wgt_file"
+            tizen package -t wgt -s "sam" -- "$wgt_file"
           done
-          
-          echo "=== 3. List Signed WGTs ==="
-          ls -lh *.wgt
 
-      # Step 9: Release to GitHub
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
