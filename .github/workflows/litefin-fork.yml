@@ -1,0 +1,107 @@
+name: Litefin-fork Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from Litefin repository'
+        required: true
+        default: 'development'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate Dynamic Metadata Tags
+        id: prep
+        run: |
+          RAW_BRANCH="${{ github.event.inputs.branch }}"
+          SANITIZED_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Checkout Litefin repository
+        uses: actions/checkout@v6
+        with:
+          repository: 'krishhari2105/litefin'
+          ref: ${{ github.event.inputs.branch }}
+          path: 'litefin-src'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'litefin-src/package-lock.json'
+
+      - name: Install and Build Project
+        working-directory: ./litefin-src
+        run: |
+          npm install
+          npm run build
+
+      - name: Cache Tizen Studio
+        id: cache-tizen
+        uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/tizen-studio
+          key: tizen-studio-10.0
+
+      - name: Setup Tizen CLI
+        if: steps.cache-tizen.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y expect curl
+          curl -fL -o tizen-installer "https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin"
+          chmod +x tizen-installer
+          ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
+          rm ./tizen-installer
+
+      - name: Add Tizen Studio to PATH
+        run: echo "${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
+
+      - name: Decode Samsung Certificates
+        env:
+          AUTHOR_B64: ${{ secrets.SAMSUNG_AUTHOR_BASE64 }}
+          DIST_B64: ${{ secrets.SAMSUNG_DISTRIBUTOR_BASE64 }}
+        run: |
+          echo "$AUTHOR_B64" | base64 -d > ${GITHUB_WORKSPACE}/author.p12
+          echo "$DIST_B64"   | base64 -d > ${GITHUB_WORKSPACE}/distributor.p12
+
+      - name: Copy Certificate Profile
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/tizen-studio-data/profile
+          cp ${GITHUB_WORKSPACE}/profiles.xml ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
+
+      # NEW: Dynamically inject the secret password into the runner's profile copy
+      - name: Inject Certificate Password
+        env:
+          CERT_PASSWORD: ${{ secrets.SAMSUNG_CERT_PASSWORD }}
+        run: |
+          sed -i "s/SAMSUNG_PWD_PLACEHOLDER/${CERT_PASSWORD}/g" ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
+
+      - name: Compile and Repackage WGT
+        working-directory: ./litefin-src
+        run: |
+          npm run package
+          for wgt_file in *.wgt; do
+            tizen package -t wgt -s "sam" -- "$wgt_file"
+          done
+
+      - name: Create or Update Litefin Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          tag: "build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
+          name: "Litefin Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
+          body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: |
+            litefin-src/*.wgt
+            litefin-src/*.ipk
