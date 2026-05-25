@@ -31,17 +31,14 @@ jobs:
         with:
           repository: 'Moonfin-Client/Smart-TV'
           ref: ${{ github.event.inputs.branch }}
-          path: 'moonfin-src'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: npm
-          cache-dependency-path: './moonfin-src/package-lock.json'
 
       - name: Install and Build Project
-        working-directory: ./moonfin-src
         run: |
           npm ci --force
 
@@ -86,10 +83,10 @@ jobs:
           sed -i "s/SAMSUNG_PWD_PLACEHOLDER/${CERT_PASSWORD}/g" ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
       - name: Compile and Repackage WGT
-        working-directory: ./moonfin-src
         run: |
-          npm run build:tizen 
           npm run build:webos
+          npm run build:tizen 
+          
 
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
@@ -100,6 +97,6 @@ jobs:
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
-            moonfin-src/*.wgt
-            moonfin-src/*.ipk
+            /*.wgt
+            /*.ipk
             
