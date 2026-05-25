@@ -103,6 +103,6 @@ jobs:
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
-            /*.wgt
-            /*.ipk
+             *.wgt
+             *.ipk
             
