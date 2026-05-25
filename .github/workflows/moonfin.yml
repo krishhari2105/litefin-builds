@@ -38,6 +38,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+          cache-dependency-path: './moonfin-src/package-lock.json'
 
       - name: Install and Build Project
         working-directory: ./moonfin-src
