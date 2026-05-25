@@ -19,8 +19,13 @@ jobs:
     name: Build webOS
     runs-on: ubuntu-latest
 
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Litefin repository
+        uses: actions/checkout@v6
+        with:
+          repository: 'Moonfin-Client/Smart-TV'
+          ref: ${{ github.event.inputs.branch }}
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
