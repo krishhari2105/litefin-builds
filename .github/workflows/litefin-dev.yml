@@ -26,22 +26,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Preserve profiles.xml
+        run: cp profiles.xml /tmp/profiles.xml  
+
       - name: Checkout Litefin repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: 'moazsalem/litefin'
           ref: ${{ github.event.inputs.branch }}
-          path: 'litefin-src'
+
+      - name: Restore profiles.xml
+        run: cp /tmp/profiles.xml ${GITHUB_WORKSPACE}/profiles.xml      
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: 'litefin-src/package-lock.json'
+          node-version: lts/*
+          cache: npm
 
       - name: Install and Build Project
-        working-directory: ./litefin-src
         run: |
           npm install
           npm run build
@@ -87,7 +90,6 @@ jobs:
           sed -i "s/SAMSUNG_PWD_PLACEHOLDER/${CERT_PASSWORD}/g" ${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml
 
       - name: Compile and Repackage WGT
-        working-directory: ./litefin-src
         run: |
           npm run package
           for wgt_file in *.wgt; do
@@ -103,5 +105,5 @@ jobs:
           body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
-            litefin-src/*.wgt
-            litefin-src/*.ipk
+             *.wgt
+             *.ipk
