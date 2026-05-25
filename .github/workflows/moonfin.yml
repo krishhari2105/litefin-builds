@@ -34,16 +34,15 @@ jobs:
           path: 'moonfin-src'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
-          node-version: '24.16.0'
-          cache: 'npm'
-          cache-dependency-path: 'moonfin-src/package-lock.json'
+          node-version: lts/*
+          cache: npm
 
       - name: Install and Build Project
         working-directory: ./moonfin-src
         run: |
-          npm install
+          npm ci --force
 
       - name: Cache Tizen Studio
         id: cache-tizen
