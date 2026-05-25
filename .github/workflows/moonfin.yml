@@ -90,9 +90,6 @@ jobs:
         run: |
           npm run build:tizen 
           npm run build:webos
-          for wgt_file in *.wgt; do
-            tizen package -t wgt -s "sam" -- "$wgt_file"
-          done
 
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
