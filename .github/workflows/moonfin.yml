@@ -89,7 +89,6 @@ jobs:
       - name: Compile and Repackage WGT
         working-directory: ./moonfin-src
         run: |
-          npm run package
           for wgt_file in *.wgt; do
             tizen package -t wgt -s "sam" -- "$wgt_file"
           done
