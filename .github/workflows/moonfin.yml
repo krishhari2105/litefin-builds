@@ -44,7 +44,6 @@ jobs:
         working-directory: ./moonfin-src
         run: |
           npm install
-          npm run build:tizen 
 
       - name: Cache Tizen Studio
         id: cache-tizen
@@ -89,6 +88,8 @@ jobs:
       - name: Compile and Repackage WGT
         working-directory: ./moonfin-src
         run: |
+          npm run build:tizen 
+          npm run build:webos
           for wgt_file in *.wgt; do
             tizen package -t wgt -s "sam" -- "$wgt_file"
           done
@@ -103,4 +104,5 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
             moonfin-src/*.wgt
+            moonfin-src/*.ipk
             
