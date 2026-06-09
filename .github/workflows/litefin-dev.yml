@@ -39,9 +39,6 @@ jobs:
         run: |
           npm install
           npm run build
-
-      - name: Compile and Repackage WGT
-        run: |
           npm run package
 
       - name: Create or Update Litefin Release
