@@ -1,4 +1,4 @@
-name: Litefin-fork Build & Release
+name: Litefin-release Build & Release
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       branch:
         description: 'Branch to build from Litefin repository'
         required: true
-        default: 'development'
+        default: 'release'
 
 jobs:
   build-and-release:
@@ -21,13 +21,13 @@ jobs:
           RAW_BRANCH="${{ github.event.inputs.branch }}"
           SANITIZED_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT 
+          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
 
       - name: Checkout Litefin repository
         uses: actions/checkout@v4
         with:
-          repository: 'krishhari2105/litefin'
-          ref: ${{ github.event.inputs.branch }}     
+          repository: 'moazsalem/litefin'
+          ref: ${{ github.event.inputs.branch }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -44,8 +44,8 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          tag: "litefin-fork-build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
-          name: "Litefin-Fork Modern Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
+          tag: "litefin-release-build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
+          name: "Litefin Modern Release Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
           body: "Modern ES6 packages (Tizen .wgt & webOS .ipk) generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |

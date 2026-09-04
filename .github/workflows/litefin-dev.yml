@@ -35,19 +35,18 @@ jobs:
           node-version: lts/*
           cache: npm
 
-      - name: Install and Build Project
+      - name: Install and Build Modern Packages
         run: |
           npm install
-          npm run build
-          npm run package
+          npm run package:modern
 
       - name: Create or Update Litefin Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
           tag: "litefin-build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
-          name: "Litefin Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
-          body: "Manual build generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          name: "Litefin Modern Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
+          body: "Modern ES6 packages (Tizen .wgt & webOS .ipk) generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
              *.wgt
