@@ -24,13 +24,13 @@ jobs:
           echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT 
 
       - name: Checkout Litefin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 'krishhari2105/litefin'
-          ref: ${{ github.event.inputs.branch }}     
+          ref: ${{ github.event.inputs.branch }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
