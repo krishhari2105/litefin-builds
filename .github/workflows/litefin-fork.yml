@@ -1,12 +1,21 @@
 name: Litefin-fork Build & Release
 
 on:
+  # Manual trigger
   workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to build from Litefin repository'
-        required: true
-        default: 'development'
+        required: false
+        default: 'litefin-emby-compatiblity'
+
+  # Triggered automatically when changes are pushed to krishhari2105/litefin
+  repository_dispatch:
+    types: [litefin-fork-push, build-fork]
+
+  # Periodic check to auto-build when new commits are detected on fork branch (zero-PAT setup)
+  schedule:
+    - cron: '*/30 * * * *'
 
 jobs:
   build-and-release:
@@ -15,38 +24,131 @@ jobs:
       contents: write
 
     steps:
-      - name: Generate Dynamic Metadata Tags
+      - name: Determine Target Branch and Metadata
         id: prep
         run: |
-          RAW_BRANCH="${{ github.event.inputs.branch }}"
-          SANITIZED_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          # Priority: workflow_dispatch input -> repository_dispatch client_payload -> default branch
+          BRANCH="${{ github.event.inputs.branch || github.event.client_payload.branch || 'litefin-emby-compatiblity' }}"
+          SANITIZED_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
           echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-          echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT 
+
+      - name: Check for New Commits (Schedule Mode Only)
+        id: check_changes
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_BRANCH="${{ steps.prep.outputs.branch }}"
+          echo "Checking latest commit for branch '${TARGET_BRANCH}' on krishhari2105/litefin..."
+          REMOTE_SHA=$(git ls-remote https://github.com/krishhari2105/litefin.git "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')
+
+          if [ -z "$REMOTE_SHA" ]; then
+            echo "::warning::Could not determine remote SHA for branch ${TARGET_BRANCH}. Proceeding with build."
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Latest remote SHA: ${REMOTE_SHA}"
+
+          # Check if the existing Litefin-Fork release body already contains this commit SHA
+          EXISTING_BODY=$(gh api repos/${{ github.repository }}/releases --paginate --jq '.[] | select(.tag_name | startswith("litefin-fork")) | .body' 2>/dev/null | head -n 30 || true)
+
+          if echo "$EXISTING_BODY" | grep -q "$REMOTE_SHA"; then
+            echo "Commit $REMOTE_SHA is already built and released. Skipping build."
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "New commit detected or no existing release found. Triggering build."
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Checkout Litefin repository
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: actions/checkout@v5
         with:
           repository: 'krishhari2105/litefin'
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ steps.prep.outputs.branch }}
+
+      - name: Extract Commit Information
+        if: steps.check_changes.outputs.skip_build != 'true'
+        id: fork_meta
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          echo "commit_sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
 
       - name: Set up Node.js
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
 
       - name: Install and Build Modern Packages
+        if: steps.check_changes.outputs.skip_build != 'true'
         run: |
           npm install
           npm run package:modern
 
-      - name: Create or Update Litefin Release
+      - name: Verify Build Artifacts
+        if: steps.check_changes.outputs.skip_build != 'true'
+        run: |
+          echo "Verifying generated package files:"
+          ls -la *.wgt *.ipk
+          if [ $(ls -1 *.wgt 2>/dev/null | wc -l) -eq 0 ] || [ $(ls -1 *.ipk 2>/dev/null | wc -l) -eq 0 ]; then
+            echo "::error::Required packages (*.wgt and *.ipk) were not found!"
+            exit 1
+          fi
+
+      - name: Delete Old Litefin-Fork Releases and Tags
+        if: steps.check_changes.outputs.skip_build != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking for old Litefin-Fork releases in ${{ github.repository }}..."
+          OLD_RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq '.[] | select(.tag_name | startswith("litefin-fork")) | .tag_name' 2>/dev/null || true)
+
+          if [ -n "$OLD_RELEASES" ]; then
+            for tag in $OLD_RELEASES; do
+              echo "Deleting old release and tag: $tag"
+              gh release delete "$tag" --cleanup-tag -y --repo "${{ github.repository }}" || true
+            done
+          else
+            echo "No existing Litefin-Fork releases found to delete."
+          fi
+
+          echo "Cleaning up any orphaned git tags starting with litefin-fork..."
+          ORPHANED_TAGS=$(gh api repos/${{ github.repository }}/git/refs/tags --paginate --jq '.[] | select(.ref | test("refs/tags/litefin-fork")) | .ref | sub("refs/tags/"; "")' 2>/dev/null || true)
+          if [ -n "$ORPHANED_TAGS" ]; then
+            for otag in $ORPHANED_TAGS; do
+              echo "Deleting orphaned git tag: $otag"
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$otag" || true
+            done
+          fi
+
+      - name: Create New Litefin-Fork Release
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          tag: "litefin-fork-build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
-          name: "Litefin-Fork Modern Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
-          body: "Modern ES6 packages (Tizen .wgt & webOS .ipk) generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          replacesArtifacts: true
+          makeLatest: true
+          tag: "litefin-fork-build-${{ steps.prep.outputs.branch_tag }}"
+          name: "Litefin-Fork Modern Builds (${{ steps.prep.outputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
+          body: |
+            ### Litefin Fork Modern Build (ES6+)
+            - **Branch**: [`${{ steps.prep.outputs.branch }}`](https://github.com/krishhari2105/litefin/tree/${{ steps.prep.outputs.branch }})
+            - **Commit**: [${{ steps.fork_meta.outputs.short_sha }}](https://github.com/krishhari2105/litefin/commit/${{ steps.fork_meta.outputs.commit_sha }}) - ${{ steps.fork_meta.outputs.commit_msg }}
+            - **Commit SHA**: `${{ steps.fork_meta.outputs.commit_sha }}`
+            - **Built on**: ${{ steps.prep.outputs.date_tag }}
+
+            #### Modern Packages (Tizen 6.5+ / webOS 6.0+):
+            - Samsung Tizen: `*.wgt`
+            - LG webOS: `*.ipk`
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
              *.wgt
