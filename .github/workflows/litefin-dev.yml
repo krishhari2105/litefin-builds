@@ -7,6 +7,13 @@ on:
         description: 'Branch to build from Litefin repository'
         required: true
         default: 'development'
+        type: string
+  schedule:
+    - cron: '*/30 * * * *'
+
+concurrency:
+  group: litefin-dev-build-${{ github.event.inputs.branch || 'development' }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -15,38 +22,104 @@ jobs:
       contents: write
 
     steps:
-      - name: Generate Dynamic Metadata Tags
+      - name: Determine Target Branch and Metadata
         id: prep
         run: |
-          RAW_BRANCH="${{ github.event.inputs.branch }}"
-          SANITIZED_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
-          echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+          BRANCH="${{ github.event.inputs.branch || 'development' }}"
+          SANITIZED_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
           echo "branch_tag=${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
+          echo "release_tag=litefin-build-${SANITIZED_BRANCH}" >> $GITHUB_OUTPUT
+          echo "date_tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      - name: Check for New Commits (Schedule Mode Only)
+        id: check_changes
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_BRANCH="${{ steps.prep.outputs.branch }}"
+          RELEASE_TAG="${{ steps.prep.outputs.release_tag }}"
+          echo "Checking latest commit for branch '${TARGET_BRANCH}' on moazsalem/litefin..."
+          REMOTE_SHA=$(git ls-remote https://github.com/moazsalem/litefin.git "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')
+
+          if [ -z "$REMOTE_SHA" ]; then
+            echo "::warning::Could not determine remote SHA for branch ${TARGET_BRANCH}. Proceeding with build."
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Latest remote SHA: ${REMOTE_SHA}"
+          EXISTING_BODY=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json body --jq '.body' 2>/dev/null || true)
+
+          if echo "$EXISTING_BODY" | grep -Fq "$REMOTE_SHA"; then
+            echo "Commit $REMOTE_SHA is already built and released. Skipping build."
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "New commit detected or no existing release found. Triggering build."
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Checkout Litefin repository
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: actions/checkout@v5
         with:
           repository: 'moazsalem/litefin'
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ steps.prep.outputs.branch }}
+
+      - name: Extract Commit Information
+        if: steps.check_changes.outputs.skip_build != 'true'
+        id: build_meta
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          echo "commit_sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
 
       - name: Set up Node.js
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
 
       - name: Install and Build Modern Packages
+        if: steps.check_changes.outputs.skip_build != 'true'
         run: |
           npm install
           npm run package:modern
 
+      - name: Verify Build Artifacts
+        if: steps.check_changes.outputs.skip_build != 'true'
+        run: |
+          echo "Verifying generated package files:"
+          ls -la *.wgt *.ipk
+          if [ $(ls -1 *.wgt 2>/dev/null | wc -l) -eq 0 ] || [ $(ls -1 *.ipk 2>/dev/null | wc -l) -eq 0 ]; then
+            echo "::error::Required packages (*.wgt and *.ipk) were not found!"
+            exit 1
+          fi
+
       - name: Create or Update Litefin Release
+        if: steps.check_changes.outputs.skip_build != 'true'
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          tag: "litefin-build-${{ steps.prep.outputs.branch_tag }}-${{ steps.prep.outputs.date_tag }}"
-          name: "Litefin Modern Builds (${{ github.event.inputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
-          body: "Modern ES6 packages (Tizen .wgt & webOS .ipk) generated on ${{ steps.prep.outputs.date_tag }} from branch `${{ github.event.inputs.branch }}`."
+          replacesArtifacts: true
+          makeLatest: true
+          tag: ${{ steps.prep.outputs.release_tag }}
+          name: "Litefin Modern Builds (${{ steps.prep.outputs.branch }}) - ${{ steps.prep.outputs.date_tag }}"
+          body: |
+            ### Litefin Modern Build (ES6+)
+            - **Branch**: [`${{ steps.prep.outputs.branch }}`](https://github.com/moazsalem/litefin/tree/${{ steps.prep.outputs.branch }})
+            - **Commit**: [${{ steps.build_meta.outputs.short_sha }}](https://github.com/moazsalem/litefin/commit/${{ steps.build_meta.outputs.commit_sha }}) - ${{ steps.build_meta.outputs.commit_msg }}
+            - **Commit SHA**: `${{ steps.build_meta.outputs.commit_sha }}`
+            - **Built on**: ${{ steps.prep.outputs.date_tag }}
+
+            #### Modern Packages (Tizen 6.5+ / webOS 6.0+):
+            - Samsung Tizen: `*.wgt`
+            - LG webOS: `*.ipk`
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: |
              *.wgt
